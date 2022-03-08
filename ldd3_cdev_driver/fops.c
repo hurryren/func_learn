@@ -46,11 +46,11 @@ ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t 
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
-	tblock = *fpos / ORANGE_BLOCK_SIZE;
+	tblock = *f_pos / ORANGE_BLOCK_SIZE;
 	toffset = *f_pos % ORANGE_BLOCK_SIZE;
 
 	if(mutex_lock_interruptible(&dev->mutex))
-		return -ERSTARTSYS;
+		return -ERESTARTSYS;
 
 	if(tblock + 1 > dev->block_counter) {
 		retval = 0;
@@ -81,13 +81,13 @@ ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t 
 
 end_of_file:
 cpy_user_error:
-	pr_debug("Rd pos = %lld, block = %lld,offset = %lld, read %lu bytes\n", *f_ops, tblock, toffset, count);
+	pr_debug("Rd pos = %lld, block = %lld,offset = %lld, read %lu bytes\n", *f_pos, tblock, toffset, count);
 	mutex_unlock(&dev->mutex);
 	return retval;
 }
 
 
-ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, loff_t *f_ops){
+ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, loff_t *f_pos){
 	struct orange_dev *dev = filp->private_data;
 	struct orange_block *pblock = NULL;
 	loff_t retval = -ENOMEM;
@@ -95,8 +95,11 @@ ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, l
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
-	tblock = *f_ops / ORANGE_BLOCK_SIZE;
-	toffset = *f_ops % ORANGE_BLOCK_SIZE;
+	tblock = *f_pos / ORANGE_BLOCK_SIZE;
+	toffset = *f_pos % ORANGE_BLOCK_SIZE;
+	
+	if(mutex_lock_interruptible(&dev->mutex))
+		return -ERESTARTSYS;
 
 	/*
 	 * For simplicity, we write one block each write request.
@@ -121,11 +124,11 @@ ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, l
 
 	retval = count;
 	pblock->offset += count;
-	*f_ops += count;
+	*f_pos += count;
 
 malloc_error:
 cpy_user_error:
-	pr_debug("WR pos = %lld, block = %lld, offset = %lld, write %lu bytes\n", *f_ops, tblock, toffset, count);
+	pr_debug("WR pos = %lld, block = %lld, offset = %lld, write %lu bytes\n", *f_pos, tblock, toffset, count);
 
 	mutex_unlock(&dev->mutex);
 	return retval;
