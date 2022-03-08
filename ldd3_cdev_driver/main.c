@@ -29,7 +29,7 @@ void __init init_orange_dev(struct orange_dev *dev){
 
 	INIT_LIST_HEAD(&dev->block_list);
 	mutex_init(&dev->mutex);
-	
+
 	cdev_init(&dev->cdev, &orange_fops);
 	dev->cdev.owner = THIS_MODULE;
 }
@@ -71,7 +71,7 @@ int __init m_init(void){
 			kfree(orange_dev[i]);
 			orange_dev[i] = NULL;
 		}
-		
+
 	}
 
 	/* TODO: unregister chrdev_region here if fail */
@@ -79,7 +79,7 @@ int __init m_init(void){
 }
 
 
-static 
+static
 void __exit m_exit(void){
 	dev_t devno;
 	printk(KERN_WARNING MODULE_NAME " unloaded\n");
@@ -99,5 +99,5 @@ module_exit(m_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("orange");
-MODULE_DESCRIPTION("a copy char device driver copy from ldd3");
+MODULE_DESCRIPTION("a char device driver copy from ldd3");
 

@@ -10,16 +10,14 @@ function load(){
 	rm -f /dev/${device}[0-2]
 
 	major=$(awk -v device="$device" '$2==device {print $1}' /proc/devices)
-	mknod /dev/${device}0 c $major 0
-	mknod /dev/${device}1 c $major 1
-	mknod /dev/${device}2 c $major 2
+	mknod /dev/${device} c $major 0
 
-	chgrp $group /dev/$device[0-2]
-	chmod $mode /dev/$device[0-2]
+	chgrp $group /dev/$device
+	chmod $mode /dev/$device
 }
 
 function unload() {
-	rm -f /dev/${device}[0-2]
+	rm -f /dev/${device}
 	rmmod $module || exit 1
 }
 

@@ -39,39 +39,33 @@ int orange_release(struct inode *inode, struct file *filp)
 ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t *f_pos)
 {
 	struct orange_dev *dev = filp->private_data;
-	struct orange_block *pblock = NULL;
+	struct data_block *dblock = NULL;
 	loff_t retval = -ENOMEM;
-	loff_t tblock = 0, toffset = 0;
 	struct list_head *plist = NULL;
+	int offset = *f_pos;
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
-
-	tblock = *f_pos / ORANGE_BLOCK_SIZE;
-	toffset = *f_pos % ORANGE_BLOCK_SIZE;
+	
+	if(count != 1)
+		return -EFAULT;
 
 	if(mutex_lock_interruptible(&dev->mutex))
 		return -ERESTARTSYS;
 
-	if(tblock + 1 > dev->block_counter) {
+	if(offset + 1 > dev->block_counter) {
 		retval = 0;
 		goto end_of_file;
 	}
 
-	plist = &dev->block_list;
-	for(int i = 0; i< tblock + 1; ++i){
+	plist = &dev->list_entry;
+	for(int i = 0; i< offset + 1; ++i){
 		plist = plist->next;
 	}
 
-	pblock = list_entry(plist, struct orange_block, block_list);
-	if(toffset >= pblock->offset){
-		retval = 0;
-		goto end_of_file;
-	}
+	dblock = list_entry(plist, struct data_block, data_list);
 
-	if(count > pblock->offset)
-		count = pblock->offset;
 
-	if(copy_to_user(buff, pblock->data,count)) {
+	if(copy_to_user(buff, dblock->data, 1)) {
 		retval = -EFAULT;
 		goto cpy_user_error;
 	}
@@ -81,7 +75,7 @@ ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t 
 
 end_of_file:
 cpy_user_error:
-	pr_debug("Rd pos = %lld, block = %lld,offset = %lld, read %lu bytes\n", *f_pos, tblock, toffset, count);
+	pr_debug("Rd pos = %lld, block_counter = %d\n", *f_pos, dev->block_counter);
 	mutex_unlock(&dev->mutex);
 	return retval;
 }
@@ -89,14 +83,18 @@ cpy_user_error:
 
 ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, loff_t *f_pos){
 	struct orange_dev *dev = filp->private_data;
-	struct orange_block *pblock = NULL;
+	struct data_block *dblock = NULL;
 	loff_t retval = -ENOMEM;
-	loff_t tblock = 0, toffset = 0;
+	
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
-	tblock = *f_pos / ORANGE_BLOCK_SIZE;
-	toffset = *f_pos % ORANGE_BLOCK_SIZE;
+	/**
+	 * 每次只写一字节 
+	 */
+	if (count != 1)
+		return -EFAULT;
+
 	
 	if(mutex_lock_interruptible(&dev->mutex))
 		return -ERESTARTSYS;
@@ -104,31 +102,28 @@ ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, l
 	/*
 	 * For simplicity, we write one block each write request.
 	 */
-	while(tblock + 1 > dev->block_counter) {
-		if(!(pblock = kmalloc(sizeof(struct orange_block), GFP_KERNEL)))
-			goto malloc_error;
-		memset(pblock, 0, sizeof(struct orange_block));
-		INIT_LIST_HEAD(&pblock->block_list);
-		list_add_tail(&pblock->block_list, &dev->block_list);
-		dev->block_counter++;
-	}
-	pblock = list_last_entry(&dev->block_list, struct orange_block, block_list);
-
-	if(count > ORANGE_BLOCK_SIZE - toffset)
-		count = ORANGE_BLOCK_SIZE - toffset;
+	if(!(dblock = kmalloc(sizeof(struct data_block), GFP_KERNEL)))
+		goto malloc_error;
+	memset(dblock, 0, sizeof(struct data_block));
+	INIT_LIST_HEAD(&dblock->data_list);
+	list_add_tail(&dblock->data_list, &dev->list_entry);
+	dev->block_counter++;
 	
-	if(copy_from_user(pblock->data+toffset, buff, count)) {
+	dblock = list_last_entry(&dev->list_entry, struct data_block, data_list);
+
+	
+	if(copy_from_user(dblock->data, buff, 1)) {
 		retval = -EFAULT;
 		goto cpy_user_error;
 	}
 
 	retval = count;
-	pblock->offset += count;
 	*f_pos += count;
+
 
 malloc_error:
 cpy_user_error:
-	pr_debug("WR pos = %lld, block = %lld, offset = %lld, write %lu bytes\n", *f_pos, tblock, toffset, count);
+	pr_debug("WR pos = %lld, block_counter = %d, write %lu bytes\n", *f_pos, dev->block_counter, count);
 
 	mutex_unlock(&dev->mutex);
 	return retval;
@@ -136,15 +131,26 @@ cpy_user_error:
 
 
 void orange_trim(struct orange_dev *dev){
-	struct orange_block *cur = NULL, *tmp = NULL;
+	struct data_block *cur = NULL, *tmp = NULL;
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
-	list_for_each_entry_safe(cur, tmp, &dev->block_list, block_list) {
-		list_del(&cur->block_list);
+	list_for_each_entry_safe(cur, tmp, &dev->list_entry, data_list) {
+		list_del(&cur->data_list);
 		memset(cur, 0, sizeof(*cur));
 		kfree(cur);
 	}
 	dev->block_counter = 0;
 }
 
+void orange_print_list(struct orange_dev *dev){
+	struct data_block *cur= NULL;
+	struct data_block *tmp = NULL;
+	int cnt = 0;
+	pr_debug("%s() is invoked\n", __FUNCTION__);
+
+	pr_debug("%d elements in orange_dev\n",dev->block_counter);
+	list_for_each_entry_safe(cur, tmp, &dev->list_entry, data_list) {
+		pr_debug("data[%d] = %c \n",cnt++,cur->data);
+	}
+}
