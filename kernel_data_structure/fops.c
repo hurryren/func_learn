@@ -46,8 +46,15 @@ ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t 
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 	
-	if(count != 1)
-		return -EFAULT;
+	if(count != 1){
+		pr_debug("read count must be 1, but got %lld\n",count);
+		/**
+		 * the file read function of python cannot request 1 byte,
+		 * so if not, set it by hand.
+		 */
+		count = 1;
+		/* return -EFAULT; */
+	}
 
 	if(mutex_lock_interruptible(&dev->mutex))
 		return -ERESTARTSYS;
@@ -65,7 +72,7 @@ ssize_t orange_read(struct  file *filp, char __user *buff, size_t count, loff_t 
 	dblock = list_entry(plist, struct data_block, data_list);
 
 
-	if(copy_to_user(buff, dblock->data, 1)) {
+	if(copy_to_user(buff, &(dblock->data), 1)) {
 		retval = -EFAULT;
 		goto cpy_user_error;
 	}
@@ -92,8 +99,15 @@ ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, l
 	/**
 	 * 每次只写一字节 
 	 */
-	if (count != 1)
+	if (count != 1) {
+		pr_debug("write count must be 1, but got %ld\n",count);
 		return -EFAULT;
+	}
+
+	/**
+	 * print buff address
+	 */
+	pr_debug("write user buff address is [%p]\n", buff);
 
 	
 	if(mutex_lock_interruptible(&dev->mutex))
@@ -109,13 +123,19 @@ ssize_t orange_write(struct file *filp, const char __user *buff, size_t count, l
 	list_add_tail(&dblock->data_list, &dev->list_entry);
 	dev->block_counter++;
 	
+	pr_debug("after write pos finish,block_counter=[%d]\n", dev->block_counter);
+
 	dblock = list_last_entry(&dev->list_entry, struct data_block, data_list);
+	
 
 	
-	if(copy_from_user(dblock->data, buff, 1)) {
+	if(copy_from_user(&(dblock->data), buff, 1)) {
 		retval = -EFAULT;
+		pr_debug("copy from user error\n");
 		goto cpy_user_error;
 	}
+	
+	pr_debug("after write pos finish, the write data = [%c]\n", dblock->data);
 
 	retval = count;
 	*f_pos += count;
@@ -134,6 +154,8 @@ void orange_trim(struct orange_dev *dev){
 	struct data_block *cur = NULL, *tmp = NULL;
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
+	
+	orange_print_list(dev);
 
 	list_for_each_entry_safe(cur, tmp, &dev->list_entry, data_list) {
 		list_del(&cur->data_list);
