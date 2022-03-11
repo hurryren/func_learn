@@ -1,4 +1,4 @@
-# ioctl
+# ioctl <ldd3>
 
 用户空间的 ioctl() 系统调用原型：
 
@@ -71,3 +71,76 @@ int access_ok(int type, const void *addr, unsigned long size);
 第一个参数应该是 VERIFU_READ 或 VERIFY_WRITE，取决于要执行的动作是读取还是写入用户空间内存区。addr 参数是一个用户空间地址，size 是字节数。例如，如果 ioctl 要从用户空间读取一个整数， size 就是 sizeof(int)。如果在执行地址处纪要读取又要写入，则应该使用 VERIFY_WRITE，因为他是 VERIFY_READ 的超集。
 
 access_ok 并没有完成验证内存的全部工作，而只检查了所引用的内存是否位于进程有对应访问权限的区域内，特别是要确保访问地址没有指向内核空间的内存区。另外大多数驱动程序代码中都不需要真正调用 access_ok，因为内存管理程序会处理它。
+
+
+
+
+
+# ioctl <kernel.org>
+
+[address](https://docs.kernel.org/driver-api/ioctl.html)
+
+https://docs.kernel.org/driver-api/ioctl.html
+
+
+
+## ioctl based interfaces
+
+ioctl() is the most common way for applications to interface with device drivers. It is flexible and easily extended by adding neew commands and can be passed through character devices, block devices as well as sockets and other special file desctriptors.
+
+However, it is also very easy to get ioctl command definitions wrong, and hard to fix them later without breaking existing applications, so this documentation tries to help developers get it it right.
+
+## command number definitions
+
+The command number, or request number, is the second argument pased to the ioctl system call. While this can be any 32-bit number that uniquely that uniquely identifies an action for particular driver, there are a number of conventions around defining them.
+
+*include/uapi/asm-generic/ioctl.h* provides four macros for defining ioctl commands that follow modern conventions: *_IO, _IOR, _IOW*, and *_IOWR*. These should be used for all new commands, with the correct parameters:
+
+*_IO/ _IOR / _IOW / _IOWR*:
+
+>   the macro name specifies how the argument will be used. It may be a pointer to data to be passed into the kernel (_IOW), out of the kernel (_IOR), or both (_IOWR). _IO can indicate either commands with no argument or those passing an integer. it is recommendes to only use _IO for commands without aruments, and use pointers for passing data.
+
+*type*:
+
+>   An 8-bit number, often a character literal, specific to a subsystem ot drive, and listed in [Ioctl numbers](https://docs.kernel.org/userspace-api/ioctl/ioctl-number.html)
+
+*nr*:
+
+>   an 8-bit number identifying the specific command, unique for a give value of type
+
+*data_type*:
+
+>   the name of the data type pointed to by the argument, the command number encodes the **sizeof(data_type)** value in a 13-bit or 14-bit interger, leading to a limit of 8191 bytes for the maximum sizeof the argument. Note: do not pass sizeof(data_type) type into _IOR/ _IOW /IOWR, as that will lead to encoding sizeof(sizeof(data_type)).
+
+
+
+## interface versions
+
+some subsystems use version numbers in data structures to overload commands with different interpretations of the argument.
+
+This is generally a bad idea, since changes to existing commands tend to break existing applications.
+
+A better approach is to add a new ioctl command with a new number. The old command still needs to be implemented in the kernel for compatibility, but this can be a wrapper around the new implemntation.
+
+## return code
+
+ioctl commands can return negative error codes as documented in errno(3); these get turned into errno values in user space. On success, the return code should be zero. It is also possible but not recommended to return a positive long value.
+
+When the ioctl callback is called with an unknown command number, the handler returns either -ENOTTY or -ENOIOCTLCMD, which also results in -ENOTTY being returned from the system call. Some subsystems return -Enosys or -EINVAL here for historic reasons, but this is wrong.
+
+## timestamps
+
+Traditionally, timestamps and timeout values are passes as struct timespec or struct timeval, but these are problematic because of incompatibel definitions of these structures in user space after the move to 64-bit time_t.
+
+The struct __kernel_timespec type can be used instead to be embedded in other data structures when separate second/nanosecond values are desired, or passed to user space directly, This is still not ideal thoudh, as the structure matches neither the kenel’s timespec64 nor the user space timespec exactly. The get_timespec64() and put_timespec64() helper funcitons can be used to ensure that the layout remains compatible with user space and the paddign is treated correctly.
+
+As it is cheap to convert seconds to nanoseconds, but the opposite requires an expensive 64-bit division, a simple __u64 nanosecond value can be simpler and more eddicient.
+
+Timeout values and timestamps should ideally use CLOCK_MONOTONIC time, as returned by ktime_get_ns() or ktime_get_ts64(), unlike CLOCK_REALTIMNE, this makes the timestamps immune from from jumping backwarrds ot forwads due to leap second adjustments and clock_settime calls.
+
+ktime_get_real_ns() can be used for CLOCK_REALTIE timestamps that need to be persistent across a reboot or between multiple machines.
+
+
+
+
+
