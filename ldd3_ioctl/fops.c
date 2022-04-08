@@ -15,7 +15,7 @@ int ioctl_open(struct inode *inode, struct file *filp)
 {
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
-	file->private_data = container_of(inode->i_cdev, struct ioctl_dev, cdev);
+	filp->private_data = container_of(inode->i_cdev, struct ioctl_dev, cdev);
 
 	return 0;
 }
@@ -25,7 +25,7 @@ ssize_t ioctl_read(struct file *filp, char __user *buff, size_t count, loff_t *f
 	int retval = 0;
 	int howmany = 0, offset = 0;
 	struct ioctl_dev *ioctl_dev = filp->private_data;
-	
+
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
 	if(ioctl_dev->buf_len == 0)
@@ -61,7 +61,7 @@ static int ioctl_reset(struct ioctl_dev *dev) {
 	return 0;
 }
 
-static ioctl_howmany(struct ioctl_dev *dev, unsigned long arg)
+static int ioctl_howmany(struct ioctl_dev *dev, unsigned long arg)
 {
 	int retval = 0;
 
@@ -79,7 +79,7 @@ static ioctl_howmany(struct ioctl_dev *dev, unsigned long arg)
 }
 
 
-static ioctl_message(struct ioctl_dev *dev, void __user *arg)
+static int ioctl_message(struct ioctl_dev *dev, void __user *arg)
 {
 	int retval = 0;
 	struct ioctl_msg_arg msg_arg;
@@ -89,9 +89,9 @@ static ioctl_message(struct ioctl_dev *dev, void __user *arg)
 		retval = -EFAULT;
 		return retval;
 	}
-	
+
 	if(msg_arg.len > BUFF_SIZE) {
-		pr_debug("message length [%d] bytes exceeds the limit\n", meg_arg.len);
+		pr_debug("message length [%d] bytes exceeds the limit\n", msg_arg.len);
 		return -ENOMEM;
 	}
 
@@ -106,19 +106,19 @@ static ioctl_message(struct ioctl_dev *dev, void __user *arg)
 	return 0;
 }
 
-long ioctl_ioctl(struct file *filp unsigned int cmd, unsigned long arg)
+long ioctl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int err = 0, retval = 0;
 	struct ioctl_dev *dev = filp->private_data;
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
-	
+
 	if(_IOC_TYPE(cmd) != IOCTL_IOC_MAGIC) {
 		pr_debug("ioctl command error\n");
 		return -ENOTTY;
 	}
 
-	if(_IOC_NR(cmd) > IOCTL_MAXNR) {
+	if(_IOC_NR(cmd) > IOCTL_MAX_NR) {
 		pr_debug("Number of ioctl parameters error\n");
 		return -ENOTTY;
 	}
@@ -127,4 +127,22 @@ long ioctl_ioctl(struct file *filp unsigned int cmd, unsigned long arg)
 	if(!err)
 		return -EFAULT;
 
-	
+	switch (cmd) {
+	case IOCTL_RESET:
+		pr_debug("ioctl ->cmd: reset\n");
+		retval = ioctl_reset(dev);
+		break;
+	case IOCTL_HOWMANY:
+		pr_debug("ioctl -> cmd: set howmany\n");
+		retval = ioctl_howmany(dev, arg);
+		break;
+	case IOCTL_MESSAGE:
+		pr_debug("ioctl -> cmd: set print message\n");
+		retval = ioctl_message(dev, (void * __user)arg);
+		break;
+	default:
+		return -ENOTTY;
+	}
+	return retval;
+}
+

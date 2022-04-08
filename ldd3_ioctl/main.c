@@ -40,9 +40,9 @@ static int __init m_init(void)
 
 	err = alloc_chrdev_region(&devno, ioctl_minor, IOCTL_DEV_NR, MODULE_NAME);
 	if(err < 0) {
-	       	pr_debug("can not get major!\n");
+		pr_debug("can not get major!\n");
 		goto on_error;
- 	}
+	}
 	ioctl_major = MAJOR(devno);
 
 	cdev_init(&ioctl_dev->cdev, &fops);
@@ -66,7 +66,7 @@ static void __exit m_exit(void)
 {
 	dev_t devno;
 
-	printk(KERN_WARNING MODELE_NAME " unloaded\n");
+	printk(KERN_WARNING MODULE_NAME " unloaded\n");
 
 	cdev_del(&ioctl_dev->cdev);
 
