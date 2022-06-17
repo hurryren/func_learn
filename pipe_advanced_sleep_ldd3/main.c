@@ -14,7 +14,7 @@
 static int pipe_major = 0, pipe_minor = 0;
 static struct pipe_dev *pipe_dev[PIPE_DEV_NR];
 
-static struct file_operation fops = {
+static struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open  = pipe_open,
 	.read  = pipe_read,

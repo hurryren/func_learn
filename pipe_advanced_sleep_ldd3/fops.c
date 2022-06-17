@@ -7,6 +7,7 @@
 #include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/sched/signal.h>
 
 #include "main.h"
 #include "fops.h"
@@ -26,7 +27,7 @@ ssize_t pipe_read(struct file *filp, char __user *buff, size_t count, loff_t *f_
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
 	if(mutex_lock_interruptible(&dev->mutex))
-		return -ERESTSRTSYS;
+		return -ERESTARTSYS;
 
 	while(!(dev->buff_len)){
 		DEFINE_WAIT(wait);
@@ -41,19 +42,19 @@ ssize_t pipe_read(struct file *filp, char __user *buff, size_t count, loff_t *f_
 		prepare_to_wait(&dev->rd_queue, &wait, TASK_INTERRUPTIBLE);
 		if(!dev->buff_len)
 			schedule();
-		finfish_wait(&dev->rd_queue, &wait);
+		finish_wait(&dev->rd_queue, &wait);
 
 		if(signal_pending(current))
-			return -ERESTSRTSYS;
+			return -ERESTARTSYS;
 
 		if(mutex_lock_interruptible(&dev->mutex))
-			return -ERESTSRTSYS;
+			return -ERESTARTSYS;
 	}
 
 	if(count > dev->buff_len - *f_pos)
 		count = dev->buff_len -*f_pos;
 
-	if(copy_to_user(buff, dev_buff + *f_pos, count)){
+	if(copy_to_user(buff, dev->buff + *f_pos, count)){
 		pr_debug("copy to user error!\n");
 		retval = -EFAULT;
 		goto copy_error;
@@ -67,7 +68,7 @@ ssize_t pipe_read(struct file *filp, char __user *buff, size_t count, loff_t *f_
 	if(*f_pos >= dev->buff_len){
 		dev->buff_len = 0;
 		*f_pos = 0;
-		pr_debug("read: process %d(%s) awakening the writers...\n", curent->pid, current->comm);
+		pr_debug("read: process %d(%s) awakening the writers...\n", current->pid, current->comm);
 		wake_up_interruptible(&dev->wr_queue);
 	}
 
@@ -85,7 +86,7 @@ ssize_t pipe_write(struct file* filp, const char __user *buff, size_t count, lof
 	pr_debug("%s() is involed\n", __FUNCTION__);
 
 	if(mutex_lock_interruptible(&dev->mutex))
-		return -ERESTSRTSYS;
+		return -ERESTARTSYS;
 
 	while(dev->buff_len){
 		DEFINE_WAIT(wait);
@@ -101,20 +102,20 @@ ssize_t pipe_write(struct file* filp, const char __user *buff, size_t count, lof
 		if(dev->buff_len)
 			schedule();
 
-		finfish_wait(&dev->wr_queue, &wait);
+		finish_wait(&dev->wr_queue, &wait);
 
 		if(signal_pending(current))
-			return -ERESTSRTSYS;
+			return -ERESTARTSYS;
 
 		if(mutex_lock_interruptible(&dev->mutex))
-			return -ERESTSRTSYS;
+			return -ERESTARTSYS;
 	}
 
 	if(count > BUFF_SIZE - *f_pos)
 		count  = BUFF_SIZE - *f_pos;
 
-	if(copy_from_user(def->buff + *f_pos, buf, count)){
-		pr_debuf("write: copy from user error\n");
+	if(copy_from_user(dev->buff + *f_pos, buff, count)){
+		pr_debug("write: copy from user error\n");
 		retval = -EFAULT;
 		goto copy_error;
 	}
