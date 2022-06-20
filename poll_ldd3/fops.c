@@ -22,7 +22,7 @@ int poll_open(struct inode *inode, struct file *filp){
 
 ssize_t poll_read(struct file *filp, char __user *buff,size_t count, loff_t *f_pos){
 	int retval;
-	struct poll_dev *dev = file->private_data;
+	struct poll_dev *dev = filp->private_data;
 
 	pr_debug("%s() is invoked\n", __FUNCTION__);
 
@@ -30,7 +30,7 @@ ssize_t poll_read(struct file *filp, char __user *buff,size_t count, loff_t *f_p
 		return -ERESTARTSYS;
 
 	if(count > dev->buf_len - *f_pos)
-		count = dev->buf_lem - *f_pos;
+		count = dev->buf_len - *f_pos;
 
 	if(copy_to_user(buff, dev->buff + *f_pos, count)){
 		retval = -EFAULT;
@@ -90,7 +90,7 @@ unsigned int poll_poll(struct file *filp, poll_table *wait){
 
 	if(atomic_dec_and_test(&dev->can_wr)){
 		pr_debug("Now fd can be written\n");
-		mask |= (POLLOUT | POLLWANORM);
+		mask |= (POLLOUT | POLLWRNORM);
 	}
 
 	mutex_unlock(&dev->mutex);

@@ -40,7 +40,7 @@ static void timer_fn(struct timer_list *t){
 	add_timer(&dev->timer);
 }
 
-static init_dev(struct poll_dev *dev){
+static void init_dev(struct poll_dev *dev){
 	mutex_init(&dev->mutex);
 	timer_setup(&dev->timer, timer_fn, 0);
 	dev->timer.expires = jiffies + TIMER_INTERVAL;
@@ -57,10 +57,10 @@ static init_dev(struct poll_dev *dev){
 	dev->cdev.owner = THIS_MODULE;
 
 	dev->buf_len = ARRAY_SIZE(DFT_MSG);
-	memcpy(dev->buff, DFT_MSG, dev->buff_len);
+	memcpy(dev->buff, DFT_MSG, dev->buf_len);
 }
 
-staic int __init m_init(void){
+static int __init m_init(void){
 	dev_t devno;
 	int err = 0;
 
@@ -81,7 +81,11 @@ staic int __init m_init(void){
 	poll_major = MAJOR(devno);
 
 	init_dev(poll_dev);
-	add_timer(&poll_dev->cdev, devno, POLL_DEV_NR);
+	add_timer(&poll_dev->timer);
+
+	devno = MKDEV(poll_major, poll_minor);
+	err = cdev_add(&poll_dev->cdev, devno, POLL_DEV_NR);
+
 	if(err) {
 		pr_debug("error when adding ioctl dev");
 		goto on_error;
@@ -109,5 +113,5 @@ module_init(m_init);
 module_exit(m_exit);
 
 MODULE_AUTHOR("orange");
-MODULE_EXIT("GPL");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("A simple poll example");
